@@ -7,12 +7,6 @@ function getDatabase() {
 
   const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL
 
-  console.log("[v0] Available env vars:", {
-    DATABASE_URL: !!process.env.DATABASE_URL,
-    POSTGRES_URL: !!process.env.POSTGRES_URL,
-    POSTGRES_PRISMA_URL: !!process.env.POSTGRES_PRISMA_URL,
-  })
-
   if (!databaseUrl) {
     throw new Error(
       "No database connection string found. Please set DATABASE_URL, POSTGRES_URL, or POSTGRES_PRISMA_URL environment variable.",

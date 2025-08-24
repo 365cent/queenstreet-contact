@@ -9,8 +9,7 @@ import { Footer } from "@/components/footer"
 export const metadata: Metadata = {
   title: "Queen Street Analytics",
   description:
-    "Canada's most comprehensive newsletter for hard-to-monitor regulatory, legislative and political news, covering 20+ unique industries",
-  generator: "v0.dev",
+    "Canada's most comprehensive newsletter for hard-to-monitor regulatory, legislative and political news, covering 20+ unique industries"
 }
 
 export default function RootLayout({
