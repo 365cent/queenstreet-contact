@@ -77,7 +77,7 @@ export async function getContacts(filters?: {
 export async function getContactById(id: number) {
   const sql = getDatabase()
   const result = await sql`SELECT * FROM contacts WHERE id = ${id}`
-  return result[0]
+  return Array.isArray(result) && result.length > 0 ? result[0] : null
 }
 
 export async function createOrder(userId: string, contactIds: number[], totalAmount: number) {
@@ -87,7 +87,7 @@ export async function createOrder(userId: string, contactIds: number[], totalAmo
     VALUES (${userId}, ${contactIds}, ${totalAmount}, 'pending')
     RETURNING *
   `
-  return result[0]
+  return Array.isArray(result) && result.length > 0 ? result[0] : null
 }
 
 export async function updateOrderStatus(orderId: number, status: string, stripePaymentIntentId?: string) {
@@ -99,7 +99,7 @@ export async function updateOrderStatus(orderId: number, status: string, stripeP
       WHERE id = ${orderId}
       RETURNING *
     `
-    return result[0]
+    return Array.isArray(result) && result.length > 0 ? result[0] : null
   } else {
     const result = await sql`
       UPDATE orders 
@@ -107,7 +107,7 @@ export async function updateOrderStatus(orderId: number, status: string, stripeP
       WHERE id = ${orderId}
       RETURNING *
     `
-    return result[0]
+    return Array.isArray(result) && result.length > 0 ? result[0] : null
   }
 }
 
@@ -132,7 +132,7 @@ export async function saveSearchResult(userId: string, queryText: string, filter
     VALUES (${userId}, ${queryText}, ${JSON.stringify(filters)}, ${contactIds.length}, ${contactIds})
     RETURNING *
   `
-  return result[0]
+  return Array.isArray(result) && result.length > 0 ? result[0] : null
 }
 
 export async function getSearchResultsByUserId(userId: string) {
@@ -150,7 +150,7 @@ export async function getOrderById(orderId: number) {
   const result = await sql`
     SELECT * FROM orders WHERE id = ${orderId} AND status = 'completed'
   `
-  return result[0]
+  return Array.isArray(result) && result.length > 0 ? result[0] : null
 }
 
 export async function getContactsByIds(contactIds: number[]) {
