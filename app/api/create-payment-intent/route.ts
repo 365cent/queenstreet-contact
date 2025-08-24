@@ -11,7 +11,7 @@ function getStripe() {
       throw new Error("STRIPE_SECRET_KEY environment variable is not set")
     }
     stripe = new Stripe(secretKey, {
-      apiVersion: "2024-06-20",
+      apiVersion: "2025-07-30.basil",
     })
   }
   return stripe
@@ -32,12 +32,19 @@ export async function POST(request: NextRequest) {
     // Create order in database
     const order = await createOrder(userId, contactIds, amount / 100)
 
+    if (!order) {
+      return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
+    }
+
+    // Type assertion since we know the order structure from database
+    const orderRecord = order as { id: number; [key: string]: any }
+
     // Create payment intent
     const paymentIntent = await getStripe().paymentIntents.create({
       amount,
       currency: "cad",
       metadata: {
-        orderId: order.id.toString(),
+        orderId: orderRecord.id.toString(),
         userId,
         contactCount: contactIds.length.toString(),
       },
@@ -45,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,
-      orderId: order.id,
+      orderId: orderRecord.id,
     })
   } catch (error) {
     console.error("Error creating payment intent:", error)
