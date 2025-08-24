@@ -44,12 +44,13 @@ function CheckoutForm({ contactIds, userId }: CheckoutFormProps) {
 
         const data = await response.json()
 
-        if (data.error) {
-          setError(data.error)
+        if (!response.ok || data.error) {
+          setError(data.error || `Failed to create payment intent: ${response.status}`)
         } else {
           setClientSecret(data.clientSecret)
         }
       } catch (err) {
+        console.error("Payment initialization error:", err)
         setError("Failed to initialize payment")
       }
     }
