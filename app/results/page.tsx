@@ -1,14 +1,14 @@
 "use client"
 
 import type React from "react"
-
+import { useSearchParams } from "next/navigation"
 import { Search, Download, Filter, ArrowLeft, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 
 interface Contact {
   id: number
@@ -24,33 +24,53 @@ interface Contact {
   category: string
 }
 
-export default function ResultsPage() {
+function ResultsPageComponent() {
+  const searchParams = useSearchParams()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState({
-    party: "",
+    topline: "",
     province: "",
+    party: "",
+    officeType: "",
+    role: "",
+    committee: "",
     category: "",
   })
+  const [includeDirector, setIncludeDirector] = useState(false)
+
   const [currentPage, setCurrentPage] = useState(1)
   const [totalResults, setTotalResults] = useState(0)
   const [selectedContacts, setSelectedContacts] = useState<number[]>([])
   const resultsPerPage = 20
 
   useEffect(() => {
+    // Initialize filters from URL search params
+    const urlFilters: { [key: string]: string } = {}
+    for (const [key, value] of searchParams.entries()) {
+      urlFilters[key] = value
+    }
+    setFilters((prev) => ({ ...prev, ...urlFilters }))
+    setIncludeDirector(searchParams.get("includeDirector") === "true")
+  }, [searchParams])
+
+  useEffect(() => {
     loadContacts()
-  }, [filters, searchQuery, currentPage])
+  }, [filters, searchQuery, currentPage, includeDirector])
 
   const loadContacts = async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
 
+      // Add all filters to the request
       if (searchQuery) params.set("search", searchQuery)
-      if (filters.party) params.set("party", filters.party)
-      if (filters.province) params.set("province", filters.province)
-      if (filters.category) params.set("category", filters.category)
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.set(key, value)
+      })
+      if (includeDirector) params.set("includeDirector", "true")
+
       params.set("limit", resultsPerPage.toString())
       params.set("offset", ((currentPage - 1) * resultsPerPage).toString())
 
@@ -89,8 +109,8 @@ export default function ResultsPage() {
     }
   }
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
+  const handleSelectAll = (checked: boolean | "indeterminate") => {
+    if (checked === true) {
       setSelectedContacts(contacts.map((c) => c.id))
     } else {
       setSelectedContacts([])
@@ -102,9 +122,10 @@ export default function ResultsPage() {
       const params = new URLSearchParams()
 
       if (searchQuery) params.set("search", searchQuery)
-      if (filters.party) params.set("party", filters.party)
-      if (filters.province) params.set("province", filters.province)
-      if (filters.category) params.set("category", filters.category)
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.set(key, value)
+      })
+      if (includeDirector) params.set("includeDirector", "true")
       params.set("limit", "1000") // Get all results
 
       const response = await fetch(`/api/contacts?${params.toString()}`)
@@ -273,7 +294,13 @@ export default function ResultsPage() {
                   <div className="p-4 border-b border-gray-200">
                     <div className="flex items-center gap-4">
                       <Checkbox
-                        checked={selectedContacts.length === contacts.length}
+                        checked={
+                          selectedContacts.length > 0 && selectedContacts.length === contacts.length
+                            ? true
+                            : selectedContacts.length > 0
+                              ? "indeterminate"
+                              : false
+                        }
                         onCheckedChange={handleSelectAll}
                       />
                       <span className="text-sm text-gray-600">
@@ -354,5 +381,13 @@ export default function ResultsPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function ResultsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ResultsPageComponent />
+    </Suspense>
   )
 }

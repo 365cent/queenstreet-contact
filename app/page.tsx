@@ -108,6 +108,7 @@ export default function ContactListsPage() {
         setAvailableOfficeTypes(["Civil Service Staff"])
         setAvailableCommittees([])
         setShowProvinces(false)
+        setSelectedFilters((prev) => ({ ...prev, party: "", committee: "" }))
         break
       case "provincial":
         setAvailableOfficeTypes(["Member's Staff"])
@@ -121,6 +122,23 @@ export default function ContactListsPage() {
     }
   }, [selectedFilters.topline])
 
+  const buildQueryString = () => {
+    const params = new URLSearchParams()
+
+    // Add all filters from state
+    Object.entries(selectedFilters).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value)
+      }
+    })
+
+    if (includeDirector) {
+      params.set("includeDirector", "true")
+    }
+
+    return params.toString()
+  }
+
   const handleSearch = async () => {
     setLoading(true)
     setShowResults(true)
@@ -128,70 +146,72 @@ export default function ContactListsPage() {
     try {
       const params = new URLSearchParams()
 
-      if (selectedFilters.party) {
-        const partyMap: { [key: string]: string } = {
-          liberal: "Liberal",
-          conservative: "Conservative",
-          ndp: "NDP",
-          bloc: "Bloc Québécois",
-          green: "Green",
-          independent: "Independent",
-        }
-        if (partyMap[selectedFilters.party]) {
-          params.set("party", partyMap[selectedFilters.party])
-        }
+      // topline → category mapping (server expects category)
+      const toplineToCategory: Record<string, string> = {
+        house: "MP",
+        senate: "Senator",
+        provincial: "MPP",
+        "civil-service": "CivilService",
+      }
+      const category = toplineToCategory[selectedFilters.topline]
+      if (category) params.set("category", category)
+      params.set("topline", selectedFilters.topline)
+
+      // party normalization
+      const partyMap: Record<string, string> = {
+        liberal: "Liberal Party of Canada",
+        conservative: "Conservative Party of Canada",
+        ndp: "New Democratic Party",
+        bloc: "Bloc Québécois",
+        green: "Green Party of Canada",
+        independent: "Independent",
+      }
+      if (selectedFilters.party && partyMap[selectedFilters.party]) {
+        params.set("party", partyMap[selectedFilters.party])
       }
 
-      if (selectedFilters.province) {
-        const provinceMap: { [key: string]: string } = {
-          AB: "Alberta",
-          BC: "British Columbia",
-          MB: "Manitoba",
-          NB: "New Brunswick",
-          NL: "Newfoundland and Labrador",
-          NT: "Northwest Territories",
-          NS: "Nova Scotia",
-          NU: "Nunavut",
-          ON: "Ontario",
-          PE: "Prince Edward Island",
-          QC: "Quebec",
-          SK: "Saskatchewan",
-          YT: "Yukon",
-        }
-        if (provinceMap[selectedFilters.province]) {
-          params.set("province", provinceMap[selectedFilters.province])
-        }
+      // province normalization (optionally accent-aware on backend)
+      const provinceMap: Record<string, string> = {
+        AB: "Alberta",
+        BC: "British Columbia",
+        MB: "Manitoba",
+        NB: "New Brunswick",
+        NL: "Newfoundland and Labrador",
+        NT: "Northwest Territories",
+        NS: "Nova Scotia",
+        NU: "Nunavut",
+        ON: "Ontario",
+        PE: "Prince Edward Island",
+        QC: "Quebec", // consider "Québec" if that’s your canonical form
+        SK: "Saskatchewan",
+        YT: "Yukon",
+      }
+      if (selectedFilters.province && provinceMap[selectedFilters.province]) {
+        params.set("province", provinceMap[selectedFilters.province])
       }
 
-      if (selectedFilters.topline === "house") {
-        params.set("category", "MP")
-      } else if (selectedFilters.topline === "senate") {
-        params.set("category", "Senator")
-      }
+      // optional filters
+      if (selectedFilters.officeType) params.set("officeType", selectedFilters.officeType)
+      if (selectedFilters.role) params.set("role", selectedFilters.role)
+      if (selectedFilters.committee) params.set("committee", selectedFilters.committee)
+      if (includeDirector) params.set("includeDirector", "true")
 
-      params.set("limit", "10") // Show first 10 results as preview
+      params.set("limit", "10")
 
-      const response = await fetch(`/api/contacts?${params.toString()}`)
-      const data = await response.json()
-
-      if (data.success) {
-        setContacts(data.contacts)
-      } else {
-        console.error("Error fetching contacts:", data.error)
-      }
-    } catch (error) {
-      console.error("Error fetching contacts:", error)
+      const res = await fetch(`/api/contacts?${params.toString()}`)
+      const data = await res.json()
+      if (data?.success) setContacts(data.contacts ?? [])
+      else setContacts([])
+    } catch (e) {
+      console.error(e)
+      setContacts([])
     } finally {
       setLoading(false)
     }
   }
 
   const handleDownload = () => {
-    const searchParams = new URLSearchParams()
-    Object.entries(selectedFilters).forEach(([key, value]) => {
-      if (value) searchParams.set(key, value)
-    })
-    window.location.href = `/results?${searchParams.toString()}`
+    window.location.href = `/results?${buildQueryString()}`
   }
 
   const handleFilterChange = (key: string, value: string) => {
@@ -366,9 +386,10 @@ export default function ContactListsPage() {
                     <label className="block text-sm font-semibold text-gray-700 mb-3">Political Party</label>
                     <div className="relative">
                       <select
-                        className="w-full h-12 border border-gray-300 rounded-md px-4 pr-10 appearance-none bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 text-sm"
+                        className="w-full h-12 border border-gray-300 rounded-md px-4 pr-10 appearance-none bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                         value={selectedFilters.party}
                         onChange={(e) => handleFilterChange("party", e.target.value)}
+                        disabled={selectedFilters.topline === "civil-service"}
                       >
                         <option value="">All parties</option>
                         <option value="liberal">Liberal Party of Canada</option>
@@ -438,7 +459,7 @@ export default function ContactListsPage() {
                   <Checkbox
                     id="include-director"
                     checked={includeDirector}
-                    onCheckedChange={setIncludeDirector}
+                    onCheckedChange={(checked) => setIncludeDirector(checked === true)}
                     className="mt-0.5"
                   />
                   <div className="space-y-1">
@@ -479,7 +500,7 @@ export default function ContactListsPage() {
                   </p>
                 </div>
                 <div className="flex space-x-3">
-                  <Link href="/results">
+                  <Link href={`/results?${buildQueryString()}`}>
                     <Button variant="outline" className="flex items-center space-x-2 bg-white border-gray-300">
                       <Search className="w-4 h-4" />
                       <span>View All Results</span>
@@ -499,6 +520,11 @@ export default function ContactListsPage() {
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                   <p className="mt-4 text-gray-600">Loading contacts...</p>
+                </div>
+              ) : contacts.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-600">No contacts found for your search criteria.</p>
+                  <p className="text-sm text-gray-500">Please try adjusting your filters.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
