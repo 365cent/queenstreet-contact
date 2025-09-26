@@ -9,19 +9,80 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
 import { useState, useEffect, Suspense } from "react"
+import { organizeColumns, getColumnValue, formatColumnValue } from "@/lib/column-utils"
 
 interface Contact {
-  id: number
-  name: string
-  title: string
-  department: string
-  email: string
-  phone: string
-  office_location: string
-  constituency: string
-  party: string
-  province: string
-  category: string
+  // Common fields
+  person_type?: string
+  full_name?: string
+  title?: string
+  email?: string
+  telephone?: string
+  alternate_phone?: string
+  fax?: string
+  street_address?: string
+  city?: string
+  postal_code?: string
+  country?: string
+  profile_url?: string
+  photo_url?: string
+  website_url?: string
+  
+  // House of Commons specific fields
+  mp_name?: string
+  political_party?: string
+  riding?: string
+  province?: string
+  hill_office_street?: string
+  hill_office_city?: string
+  hill_office_province?: string
+  hill_office_postal_code?: string
+  hill_office_phone?: string
+  hill_office_fax?: string
+  constituency_office_name?: string
+  constituency_office_street?: string
+  constituency_office_city?: string
+  constituency_office_province?: string
+  constituency_office_postal_code?: string
+  constituency_office_phone?: string
+  constituency_office_fax?: string
+  primary_role?: string
+  current_roles?: string
+  latest_role_start_date?: string
+  link_to_all_roles?: string
+  link_to_xml_data?: string
+  link_to_csv_data?: string
+  constituency_postal_codes?: string
+  parliamentary_offices?: string
+  committees?: string
+  
+  // Senate specific fields
+  senator_name?: string
+  senator_province?: string
+  senator_affiliation?: string
+  senator_url?: string
+  senator_linkedin_url?: string
+  senator_linkedin_found?: string
+  nomination_date?: string
+  retirement_date?: string
+  linkedin_url?: string
+  
+  // Provincial specific fields
+  party?: string
+  constituency?: string
+  constituency_address?: string
+  legislative_address?: string
+  profile_summary?: string
+  education?: string
+  work_experience?: string
+  
+  // Legacy fields for backward compatibility
+  id?: number
+  name?: string
+  department?: string
+  phone?: string
+  office_location?: string
+  category?: string
 }
 
 function ResultsPageComponent() {
@@ -43,7 +104,7 @@ function ResultsPageComponent() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalResults, setTotalResults] = useState(0)
   const [selectedContacts, setSelectedContacts] = useState<number[]>([])
-  const resultsPerPage = 20
+  const resultsPerPage = 1
 
   useEffect(() => {
     // Initialize filters from URL search params
@@ -66,9 +127,55 @@ function ResultsPageComponent() {
 
       // Add all filters to the request
       if (searchQuery) params.set("search", searchQuery)
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.set(key, value)
-      })
+      
+      // topline → category mapping (server expects category)
+      const toplineToCategory: Record<string, string> = {
+        house: "MP",
+        senate: "Senator",
+        provincial: "MPP",
+        "civil-service": "CivilService",
+      }
+      const category = toplineToCategory[filters.topline]
+      if (category) params.set("category", category)
+      if (filters.topline) params.set("topline", filters.topline)
+
+      // party normalization
+      const partyMap: Record<string, string> = {
+        liberal: "Liberal Party of Canada",
+        conservative: "Conservative Party of Canada",
+        ndp: "New Democratic Party",
+        bloc: "Bloc Québécois",
+        green: "Green Party of Canada",
+        independent: "Independent",
+      }
+      if (filters.party && partyMap[filters.party]) {
+        params.set("party", partyMap[filters.party])
+      }
+
+      // province normalization
+      const provinceMap: Record<string, string> = {
+        AB: "Alberta",
+        BC: "British Columbia",
+        MB: "Manitoba",
+        NB: "New Brunswick",
+        NL: "Newfoundland and Labrador",
+        NT: "Northwest Territories",
+        NS: "Nova Scotia",
+        NU: "Nunavut",
+        ON: "Ontario",
+        PE: "Prince Edward Island",
+        QC: "Quebec",
+        SK: "Saskatchewan",
+        YT: "Yukon",
+      }
+      if (filters.province && provinceMap[filters.province]) {
+        params.set("province", provinceMap[filters.province])
+      }
+
+      // Add other filters
+      if (filters.officeType) params.set("officeType", filters.officeType)
+      if (filters.role) params.set("role", filters.role)
+      if (filters.committee) params.set("committee", filters.committee)
       if (includeDirector) params.set("includeDirector", "true")
 
       params.set("limit", resultsPerPage.toString())
@@ -111,7 +218,7 @@ function ResultsPageComponent() {
 
   const handleSelectAll = (checked: boolean | "indeterminate") => {
     if (checked === true) {
-      setSelectedContacts(contacts.map((c) => c.id))
+      setSelectedContacts(contacts.map((c, index) => c.id || index).filter((id): id is number => typeof id === 'number'))
     } else {
       setSelectedContacts([])
     }
@@ -132,7 +239,7 @@ function ResultsPageComponent() {
       const data = await response.json()
 
       if (data.success) {
-        const allContactIds = data.contacts.map((c: Contact) => c.id).join(",")
+        const allContactIds = data.contacts.map((c: Contact, index: number) => c.id || index).join(",")
         window.location.href = `/checkout?contacts=${allContactIds}`
       } else {
         console.error("Error getting all contacts:", data.error)
@@ -313,35 +420,53 @@ function ResultsPageComponent() {
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
-                          <th className="text-left p-4 w-12"></th>
-                          <th className="text-left p-4 font-semibold text-gray-900">Name</th>
-                          <th className="text-left p-4 font-semibold text-gray-900">Title</th>
-                          <th className="text-left p-4 font-semibold text-gray-900">Party</th>
-                          <th className="text-left p-4 font-semibold text-gray-900">Province</th>
-                          <th className="text-left p-4 font-semibold text-gray-900">Contact</th>
+                          <th className="text-left p-2 w-12"></th>
+                          {organizeColumns(contacts).map((column) => (
+                            <th key={column.key} className="text-left p-2 font-semibold text-gray-900 text-xs">
+                              {column.label}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {contacts.map((contact) => (
-                          <tr key={contact.id} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td className="p-4">
+                        {contacts.map((contact, index) => (
+                          <tr key={contact.id || index} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="p-2">
                               <Checkbox
-                                checked={selectedContacts.includes(contact.id)}
-                                onCheckedChange={(checked) => handleContactSelect(contact.id, checked as boolean)}
+                                checked={selectedContacts.includes(contact.id || index)}
+                                onCheckedChange={(checked) => handleContactSelect(contact.id || index, checked as boolean)}
                               />
                             </td>
-                            <td className="p-4 font-medium text-gray-900">{contact.name}</td>
-                            <td className="p-4 text-gray-700">{contact.title}</td>
-                            <td className="p-4">
-                              <Badge variant="secondary" className="text-xs">
-                                {contact.party}
-                              </Badge>
-                            </td>
-                            <td className="p-4 text-gray-700">{contact.province}</td>
-                            <td className="p-4 text-sm text-gray-600">
-                              <div>{contact.email}</div>
-                              <div>{contact.phone}</div>
-                            </td>
+                            {organizeColumns(contacts).map((column) => {
+                              const value = getColumnValue(contact, column.key)
+                              const formattedValue = formatColumnValue(value)
+                              
+                              return (
+                                <td key={column.key} className="p-2 text-xs text-gray-700 max-w-32">
+                                  {column.key === 'email' && value ? (
+                                    <a href={`mailto:${value}`} className="text-blue-600 hover:text-blue-800 truncate block">
+                                      {formattedValue}
+                                    </a>
+                                  ) : column.key === 'profile_url' && value ? (
+                                    <a href={value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                      View
+                                    </a>
+                                  ) : column.key === 'website_url' && value ? (
+                                    <a href={value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                      Link
+                                    </a>
+                                  ) : column.key === 'political_party' || column.key === 'party' ? (
+                                    <Badge variant="secondary" className="text-xs">
+                                      {formattedValue}
+                                    </Badge>
+                                  ) : (
+                                    <div className="truncate" title={value}>
+                                      {formattedValue}
+                                    </div>
+                                  )}
+                                </td>
+                              )
+                            })}
                           </tr>
                         ))}
                       </tbody>

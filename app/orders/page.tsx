@@ -137,7 +137,7 @@ export default function OrdersPage() {
                       <h4 className="font-semibold text-gray-900 mb-2">Order Details</h4>
                       <div className="space-y-1 text-sm text-gray-600">
                         <div className="flex items-center">
-                          <CreditCard className="w-4 h-4 mr-2" />${order.total_amount.toFixed(2)} {order.currency}
+                          <CreditCard className="w-4 h-4 mr-2" />${Number(order.total_amount).toFixed(2)} {order.currency}
                         </div>
                         <div>{order.contact_ids.length} contacts purchased</div>
                       </div>

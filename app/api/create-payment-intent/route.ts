@@ -4,6 +4,8 @@ import { createOrder } from "@/lib/database"
 
 let stripe: Stripe | null = null
 
+// $49 + HST 13% if not Canadian + 49 cents per contact
+
 function getStripe() {
   if (!stripe) {
     const secretKey = process.env.STRIPE_SECRET_KEY
@@ -19,7 +21,7 @@ function getStripe() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { contactIds, userId, amount = 4900 } = await request.json() // $49.00 in cents
+    const { contactIds, userId, amount = 4900, bypass = false } = await request.json() // $49.00 in cents
 
     if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
       return NextResponse.json({ error: "Contact IDs are required" }, { status: 400 })
@@ -39,7 +41,20 @@ export async function POST(request: NextRequest) {
     // Type assertion since we know the order structure from database
     const orderRecord = order as { id: number; [key: string]: any }
 
-    // Create payment intent
+    // If bypass mode, mark order as completed and return order ID
+    if (bypass) {
+      // Update order status to completed for bypass
+      const { updateOrderStatus } = await import("@/lib/database")
+      await updateOrderStatus(orderRecord.id, "completed")
+      
+      return NextResponse.json({
+        orderId: orderRecord.id,
+        bypass: true,
+        message: "Order created successfully in bypass mode"
+      })
+    }
+
+    // Create payment intent for normal flow
     const paymentIntent = await getStripe().paymentIntents.create({
       amount,
       currency: "cad",

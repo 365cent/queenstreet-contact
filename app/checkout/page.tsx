@@ -25,6 +25,9 @@ function CheckoutForm({ contactIds, userId }: CheckoutFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [bypassMode, setBypassMode] = useState(false)
+  const [email, setEmail] = useState("")
+  const [emailError, setEmailError] = useState<string | null>(null)
 
   useEffect(() => {
     // Create payment intent when component mounts
@@ -60,8 +63,84 @@ function CheckoutForm({ contactIds, userId }: CheckoutFormProps) {
     }
   }, [contactIds, userId])
 
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  const handleBypass = async () => {
+    setLoading(true)
+    setError(null)
+    setEmailError(null)
+
+    // Validate email
+    if (!email.trim()) {
+      setEmailError("Email address is required")
+      setLoading(false)
+      return
+    }
+
+    if (!validateEmail(email)) {
+      setEmailError("Please enter a valid email address")
+      setLoading(false)
+      return
+    }
+
+    // Store email in localStorage for email integration
+    localStorage.setItem('customerEmail', email.trim())
+
+    try {
+      // Create a mock order without payment
+      const response = await fetch("/api/create-payment-intent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contactIds,
+          userId,
+          amount: 4900,
+          bypass: true, // Add bypass flag
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        setError(data.error || "Failed to create bypass order")
+        setLoading(false)
+      } else {
+        // Redirect to success page with bypass flag
+        router.push(`/checkout/success?bypass=true&order_id=${data.orderId}`)
+      }
+    } catch (err) {
+      console.error("Bypass error:", err)
+      setError("Failed to process bypass order")
+      setLoading(false)
+    }
+  }
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+
+    if (bypassMode) {
+      await handleBypass()
+      return
+    }
+
+    // Validate email for regular payment too
+    if (!email.trim()) {
+      setEmailError("Email address is required")
+      return
+    }
+
+    if (!validateEmail(email)) {
+      setEmailError("Please enter a valid email address")
+      return
+    }
+
+    // Store email in localStorage for email integration
+    localStorage.setItem('customerEmail', email.trim())
 
     if (!stripe || !elements || !clientSecret) {
       return
@@ -69,6 +148,7 @@ function CheckoutForm({ contactIds, userId }: CheckoutFormProps) {
 
     setLoading(true)
     setError(null)
+    setEmailError(null)
 
     const cardElement = elements.getElement(CardElement)
 
@@ -83,6 +163,7 @@ function CheckoutForm({ contactIds, userId }: CheckoutFormProps) {
         card: cardElement,
         billing_details: {
           name: "Customer", // In a real app, get this from user input
+          email: email.trim(),
         },
       },
     })
@@ -147,13 +228,68 @@ function CheckoutForm({ contactIds, userId }: CheckoutFormProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Card Details</label>
-                <div className="border border-gray-300 rounded-md p-3 bg-white">
-                  <CardElement options={cardElementOptions} />
+            {/* Bypass Toggle for Testing */}
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-yellow-800">Testing Mode</h4>
+                  <p className="text-xs text-yellow-700">Toggle to bypass payment for testing</p>
                 </div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={bypassMode}
+                    onChange={(e) => setBypassMode(e.target.checked)}
+                    className="mr-2"
+                  />
+                  <span className="text-sm text-yellow-800">Bypass Payment</span>
+                </label>
               </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Email Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    setEmailError(null)
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    emailError ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="Enter your email address"
+                  required
+                />
+                {emailError && (
+                  <p className="mt-1 text-sm text-red-600">{emailError}</p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  We'll send your download link and receipt to this email address
+                </p>
+              </div>
+
+              {!bypassMode && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Card Details</label>
+                  <div className="border border-gray-300 rounded-md p-3 bg-white">
+                    <CardElement options={cardElementOptions} />
+                  </div>
+                </div>
+              )}
+
+              {bypassMode && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                  <p className="text-sm text-blue-800">
+                    <strong>Bypass Mode:</strong> Payment will be skipped and order will be created directly.
+                  </p>
+                </div>
+              )}
 
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-md p-3">
@@ -161,17 +297,28 @@ function CheckoutForm({ contactIds, userId }: CheckoutFormProps) {
                 </div>
               )}
 
-              <div className="flex items-center text-sm text-gray-600">
-                <Lock className="w-4 h-4 mr-2" />
-                Your payment information is secure and encrypted
-              </div>
+              {!bypassMode && (
+                <div className="flex items-center text-sm text-gray-600">
+                  <Lock className="w-4 h-4 mr-2" />
+                  Your payment information is secure and encrypted
+                </div>
+              )}
 
               <Button
                 type="submit"
-                disabled={!stripe || loading || !clientSecret}
-                className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
+                disabled={(!bypassMode && (!stripe || !clientSecret)) || loading}
+                className={`w-full py-3 ${
+                  bypassMode 
+                    ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                    : "bg-green-600 hover:bg-green-700 text-white"
+                }`}
               >
-                {loading ? "Processing..." : "Complete Purchase - $49.00"}
+                {loading 
+                  ? "Processing..." 
+                  : bypassMode 
+                    ? "Bypass Payment & Complete Order" 
+                    : "Complete Purchase - $49.00"
+                }
               </Button>
             </form>
           </CardContent>

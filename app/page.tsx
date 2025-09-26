@@ -1,136 +1,224 @@
 "use client"
 
-import { Search, Download, Home, Users, Building, MapPin, ChevronDown } from "lucide-react"
+import { Search, Download, Home, Users, Building, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ComboBoxMultiSelect, type Option } from "@/components/ui/combo-box"
+import { Input } from "@/components/ui/input"
 import Link from "next/link"
 import { useState, useEffect } from "react"
+import { organizeColumns, getColumnValue, formatColumnValue } from "@/lib/column-utils"
+
+interface FilterGroupProps {
+  label: string
+  placeholder: string
+  options: Option[]
+  value: string[]
+  onChange: (values: string[]) => void
+  loading?: boolean
+}
+
+function FilterGroup({ label, placeholder, options, value, onChange, loading }: FilterGroupProps) {
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-semibold text-gray-700">{label}</label>
+      <ComboBoxMultiSelect
+        options={options}
+        value={value}
+        onChange={onChange}
+        placeholder={loading ? "Loading..." : placeholder}
+        searchPlaceholder={`Search ${label.toLowerCase()}...`}
+        disabled={loading}
+      />
+    </div>
+  )
+}
 
 interface Contact {
-  id: number
-  name: string
-  title: string
-  department: string
-  email: string
-  phone: string
-  office_location: string
-  constituency: string
-  party: string
-  province: string
-  category: string
+  // Common fields
+  person_type?: string
+  full_name?: string
+  title?: string
+  email?: string
+  telephone?: string
+  alternate_phone?: string
+  fax?: string
+  street_address?: string
+  city?: string
+  postal_code?: string
+  country?: string
+  profile_url?: string
+  photo_url?: string
+  website_url?: string
+  
+  // House of Commons specific fields
+  mp_name?: string
+  political_party?: string
+  riding?: string
+  province?: string
+  hill_office_street?: string
+  hill_office_city?: string
+  hill_office_province?: string
+  hill_office_postal_code?: string
+  hill_office_phone?: string
+  hill_office_fax?: string
+  constituency_office_name?: string
+  constituency_office_street?: string
+  constituency_office_city?: string
+  constituency_office_province?: string
+  constituency_office_postal_code?: string
+  constituency_office_phone?: string
+  constituency_office_fax?: string
+  primary_role?: string
+  current_roles?: string
+  latest_role_start_date?: string
+  link_to_all_roles?: string
+  link_to_xml_data?: string
+  link_to_csv_data?: string
+  constituency_postal_codes?: string
+  parliamentary_offices?: string
+  committees?: string
+  
+  // Senate specific fields
+  senator_name?: string
+  senator_province?: string
+  senator_affiliation?: string
+  senator_url?: string
+  senator_linkedin_url?: string
+  senator_linkedin_found?: string
+  nomination_date?: string
+  retirement_date?: string
+  linkedin_url?: string
+  
+  // Provincial specific fields
+  party?: string
+  constituency?: string
+  constituency_address?: string
+  legislative_address?: string
+  profile_summary?: string
+  education?: string
+  work_experience?: string
+  
+  // Legacy fields for backward compatibility
+  id?: number
+  name?: string
+  department?: string
+  phone?: string
+  office_location?: string
+  category?: string
 }
 
 export default function ContactListsPage() {
   const [selectedFilters, setSelectedFilters] = useState({
     topline: "house",
-    province: "",
-    party: "",
-    officeType: "",
-    role: "",
-    committee: "",
+    categories: [] as string[],
+    province: [] as string[],
+    party: [] as string[],
+    committee: [] as string[],
+    role: [] as string[],
+    issue: [] as string[],
+    linkedin: [] as string[],
+    search: "",
   })
 
   const [showResults, setShowResults] = useState(false)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(false)
-  const [availableOfficeTypes, setAvailableOfficeTypes] = useState<string[]>([])
-  const [availableCommittees, setAvailableCommittees] = useState<string[]>([])
-  const [showProvinces, setShowProvinces] = useState(true)
+  const [availableOptions, setAvailableOptions] = useState({
+    categories: [] as Option[],
+    province: [] as Option[],
+    party: [] as Option[],
+    committee: [] as Option[],
+    role: [] as Option[],
+    issue: [] as Option[],
+    linkedin: [] as Option[],
+  })
   const [includeDirector, setIncludeDirector] = useState(false)
+  const [loadingOptions, setLoadingOptions] = useState(false)
 
-  // Update available options based on topline selection
   useEffect(() => {
-    switch (selectedFilters.topline) {
-      case "house":
-        setAvailableOfficeTypes(["Ministerial Staff", "Member's Staff"])
-        setAvailableCommittees([
-          "Agriculture and Agri-Food",
-          "Canadian Heritage",
-          "Citizenship and Immigration",
-          "Environment and Sustainable Development",
-          "Finance",
-          "Fisheries and Oceans",
-          "Foreign Affairs and International Development",
-          "Government Operations and Estimates",
-          "Health",
-          "Human Resources, Skills and Social Development",
-          "Industry and Technology",
-          "Justice and Human Rights",
-          "National Defence",
-          "Natural Resources",
-          "Official Languages",
-          "Procedure and House Affairs",
-          "Public Accounts",
-          "Public Safety and National Security",
-          "Status of Women",
-          "Transport, Infrastructure and Communities",
-          "Veterans Affairs",
-          "Access to Information, Privacy and Ethics",
-          "International Trade",
-          "Northern Affairs and Arctic Sovereignty",
-          "Science and Research",
-        ])
-        setShowProvinces(true)
-        break
-      case "senate":
-        setAvailableOfficeTypes(["Member's Staff"])
-        setAvailableCommittees([
-          "Aboriginal Peoples",
-          "Agriculture and Forestry",
-          "Banking, Trade and Commerce",
-          "Energy, the Environment and Natural Resources",
-          "Fisheries and Oceans",
-          "Foreign Affairs and International Trade",
-          "Human Rights",
-          "Internal Economy, Budgets and Administration",
-          "Legal and Constitutional Affairs",
-          "National Finance",
-          "National Security and Defence",
-          "Official Languages",
-          "Rules, Procedures and the Rights of Parliament",
-          "Social Affairs, Science and Technology",
-          "Transport and Communications",
-          "Anti-terrorism",
-          "Charitable Sector",
-          "Ethics and Conflict of Interest for Senators",
-          "Senate Modernization",
-          "Special Committee on the Arctic",
-          "Special Committee on Aging",
-          "Special Committee on the Charitable Sector",
-          "Special Committee on Senate Modernization",
-          "Joint Committee on the Library of Parliament",
-          "Joint Committee on Scrutiny of Regulations",
-        ])
-        setShowProvinces(false)
-        break
-      case "civil-service":
-        setAvailableOfficeTypes(["Civil Service Staff"])
-        setAvailableCommittees([])
-        setShowProvinces(false)
-        setSelectedFilters((prev) => ({ ...prev, party: "", committee: "" }))
-        break
-      case "provincial":
-        setAvailableOfficeTypes(["Member's Staff"])
-        setAvailableCommittees([])
-        setShowProvinces(true)
-        break
-      default:
-        setAvailableOfficeTypes([])
-        setAvailableCommittees([])
-        setShowProvinces(false)
+    const fetchOptions = async () => {
+      setLoadingOptions(true)
+      try {
+        const response = await fetch(`/api/filters?topline=${selectedFilters.topline}`)
+        const data = await response.json()
+
+        if (data.success) {
+          setAvailableOptions({
+            categories: mapOptions(data.filters.categories),
+            province: mapOptions(data.filters.province),
+            party: mapOptions(data.filters.party),
+            committee: mapOptions(data.filters.committee),
+            role: mapOptions(data.filters.role),
+            issue: mapOptions(data.filters.issue),
+            linkedin: mapOptions(data.filters.linkedin),
+          })
+
+          setSelectedFilters((prev) => ({
+            ...prev,
+            categories: filterSelections(prev.categories, data.filters.categories),
+            province: filterSelections(prev.province, data.filters.province),
+            party: filterSelections(prev.party, data.filters.party),
+            committee: filterSelections(prev.committee, data.filters.committee),
+            role: filterSelections(prev.role, data.filters.role),
+            issue: filterSelections(prev.issue, data.filters.issue),
+            linkedin: filterSelections(prev.linkedin, data.filters.linkedin),
+          }))
+        }
+      } catch (error) {
+        console.error("Failed to load filter options", error)
+      } finally {
+        setLoadingOptions(false)
+      }
     }
+
+    fetchOptions()
   }, [selectedFilters.topline])
+
+  const mapOptions = (values?: string[] | Array<{ value: string; label: string; group?: string }>): Option[] => {
+    if (!values) return []
+    return values.map((item) => {
+      if (typeof item === "string") {
+        return { value: item, label: item }
+      }
+      return { value: item.value, label: item.label, group: item.group }
+    })
+  }
+
+  const filterSelections = (current: string[], available?: string[] | Array<{ value: string }>) => {
+    if (!available) return []
+    const allowedValues = new Set(available.map((item) => (typeof item === "string" ? item : item.value)))
+    return current.filter((item) => allowedValues.has(item))
+  }
 
   const buildQueryString = () => {
     const params = new URLSearchParams()
 
-    // Add all filters from state
-    Object.entries(selectedFilters).forEach(([key, value]) => {
-      if (value) {
-        params.set(key, value)
+    params.set("topline", selectedFilters.topline)
+
+    if (selectedFilters.search) {
+      params.set("search", selectedFilters.search)
+    }
+
+    const multiKeys: Array<keyof typeof selectedFilters> = [
+      "categories",
+      "province",
+      "party",
+      "committee",
+      "role",
+      "issue",
+      "linkedin",
+    ]
+
+    for (const key of multiKeys) {
+      const values = selectedFilters[key]
+      if (Array.isArray(values)) {
+        values.forEach((value: string) => {
+          params.append(key, value)
+        })
       }
-    })
+    }
 
     if (includeDirector) {
       params.set("includeDirector", "true")
@@ -147,56 +235,18 @@ export default function ContactListsPage() {
       const params = new URLSearchParams()
 
       // topline → category mapping (server expects category)
-      const toplineToCategory: Record<string, string> = {
-        house: "MP",
-        senate: "Senator",
-        provincial: "MPP",
-        "civil-service": "CivilService",
-      }
-      const category = toplineToCategory[selectedFilters.topline]
-      if (category) params.set("category", category)
       params.set("topline", selectedFilters.topline)
 
-      // party normalization
-      const partyMap: Record<string, string> = {
-        liberal: "Liberal Party of Canada",
-        conservative: "Conservative Party of Canada",
-        ndp: "New Democratic Party",
-        bloc: "Bloc Québécois",
-        green: "Green Party of Canada",
-        independent: "Independent",
-      }
-      if (selectedFilters.party && partyMap[selectedFilters.party]) {
-        params.set("party", partyMap[selectedFilters.party])
-      }
-
-      // province normalization (optionally accent-aware on backend)
-      const provinceMap: Record<string, string> = {
-        AB: "Alberta",
-        BC: "British Columbia",
-        MB: "Manitoba",
-        NB: "New Brunswick",
-        NL: "Newfoundland and Labrador",
-        NT: "Northwest Territories",
-        NS: "Nova Scotia",
-        NU: "Nunavut",
-        ON: "Ontario",
-        PE: "Prince Edward Island",
-        QC: "Quebec", // consider "Québec" if that’s your canonical form
-        SK: "Saskatchewan",
-        YT: "Yukon",
-      }
-      if (selectedFilters.province && provinceMap[selectedFilters.province]) {
-        params.set("province", provinceMap[selectedFilters.province])
-      }
-
-      // optional filters
-      if (selectedFilters.officeType) params.set("officeType", selectedFilters.officeType)
-      if (selectedFilters.role) params.set("role", selectedFilters.role)
-      if (selectedFilters.committee) params.set("committee", selectedFilters.committee)
+      selectedFilters.categories.forEach((value) => params.append("category", value))
+      selectedFilters.party.forEach((value) => params.append("party", value))
+      selectedFilters.province.forEach((value) => params.append("province", value))
+      selectedFilters.role.forEach((value) => params.append("role", value))
+      selectedFilters.committee.forEach((value) => params.append("committee", value))
+      selectedFilters.issue.forEach((value) => params.append("issue", value))
+      selectedFilters.linkedin.forEach((value) => params.append("linkedin", value))
       if (includeDirector) params.set("includeDirector", "true")
 
-      params.set("limit", "10")
+      params.set("limit", "1")
 
       const res = await fetch(`/api/contacts?${params.toString()}`)
       const data = await res.json()
@@ -214,8 +264,27 @@ export default function ContactListsPage() {
     window.location.href = `/results?${buildQueryString()}`
   }
 
-  const handleFilterChange = (key: string, value: string) => {
-    setSelectedFilters((prev) => ({ ...prev, [key]: value }))
+  const handleToplineChange = (value: string) => {
+    setSelectedFilters((prev) => ({
+      ...prev,
+      topline: value,
+      categories: [],
+      province: [],
+      party: [],
+      committee: [],
+      role: [],
+      issue: [],
+      linkedin: [],
+    }))
+  }
+
+  const handleMultiSelectChange = (key: keyof typeof selectedFilters, values: string[]) => {
+    setSelectedFilters((prev) => ({ ...prev, [key]: values }))
+  }
+
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
+    setSelectedFilters((prev) => ({ ...prev, search: value }))
   }
 
   return (
@@ -249,7 +318,7 @@ export default function ContactListsPage() {
                       name="topline"
                       value="house"
                       checked={selectedFilters.topline === "house"}
-                      onChange={(e) => handleFilterChange("topline", e.target.value)}
+                      onChange={(e) => handleToplineChange(e.target.value)}
                       className="sr-only"
                     />
                     <div
@@ -269,7 +338,7 @@ export default function ContactListsPage() {
                       name="topline"
                       value="senate"
                       checked={selectedFilters.topline === "senate"}
-                      onChange={(e) => handleFilterChange("topline", e.target.value)}
+                      onChange={(e) => handleToplineChange(e.target.value)}
                       className="sr-only"
                     />
                     <div
@@ -287,22 +356,22 @@ export default function ContactListsPage() {
                     <input
                       type="radio"
                       name="topline"
-                      value="civil-service"
-                      checked={selectedFilters.topline === "civil-service"}
-                      onChange={(e) => handleFilterChange("topline", e.target.value)}
+                      value="minister"
+                      checked={selectedFilters.topline === "minister"}
+                      onChange={(e) => handleToplineChange(e.target.value)}
                       className="sr-only"
                     />
                     <div
                       className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${
-                        selectedFilters.topline === "civil-service" ? "border-blue-600 bg-blue-600" : "border-gray-300"
+                        selectedFilters.topline === "minister" ? "border-blue-600 bg-blue-600" : "border-gray-300"
                       }`}
                     >
-                      {selectedFilters.topline === "civil-service" && (
+                      {selectedFilters.topline === "minister" && (
                         <div className="w-2 h-2 rounded-full bg-white"></div>
                       )}
                     </div>
                     <Building className="w-5 h-5 mr-3 text-gray-500" />
-                    <span className="text-sm font-medium text-gray-900">Civil Service</span>
+                    <span className="text-sm font-medium text-gray-900">Minister Office</span>
                   </label>
 
                   <label className="relative flex items-center p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-200">
@@ -311,7 +380,7 @@ export default function ContactListsPage() {
                       name="topline"
                       value="provincial"
                       checked={selectedFilters.topline === "provincial"}
-                      onChange={(e) => handleFilterChange("topline", e.target.value)}
+                      onChange={(e) => handleToplineChange(e.target.value)}
                       className="sr-only"
                     />
                     <div
@@ -330,127 +399,84 @@ export default function ContactListsPage() {
               </div>
 
               <div className="border-t border-gray-200 pt-8">
-                <div className="grid md:grid-cols-3 gap-6">
-                  {/* Provinces - Only show for House and Provincial */}
-                  {showProvinces && (
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">Province/Territory</label>
-                      <div className="relative">
-                        <select
-                          className="w-full h-12 border border-gray-300 rounded-md px-4 pr-10 appearance-none bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 text-sm"
-                          value={selectedFilters.province}
-                          onChange={(e) => handleFilterChange("province", e.target.value)}
-                        >
-                          <option value="">All provinces and territories</option>
-                          <option value="AB">Alberta</option>
-                          <option value="BC">British Columbia</option>
-                          <option value="MB">Manitoba</option>
-                          <option value="NB">New Brunswick</option>
-                          <option value="NL">Newfoundland and Labrador</option>
-                          <option value="NT">Northwest Territories</option>
-                          <option value="NS">Nova Scotia</option>
-                          <option value="NU">Nunavut</option>
-                          <option value="ON">Ontario</option>
-                          <option value="PE">Prince Edward Island</option>
-                          <option value="QC">Quebec</option>
-                          <option value="SK">Saskatchewan</option>
-                          <option value="YT">Yukon</option>
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
+                {/* Search Bar */}
+                <div className="mb-8">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">Search</label>
+                  <Input
+                    type="text"
+                    value={selectedFilters.search}
+                    onChange={handleSearchChange}
+                    placeholder="Search by name, issue, role, etc."
+                    className="h-12 max-w-md border-gray-200 bg-white rounded-lg shadow-sm focus:border-blue-300 focus:ring-blue-500/20"
+                  />
+                </div>
+
+                {/* Filter Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <FilterGroup
+                    label="Province"
+                    placeholder="Select provinces"
+                    options={availableOptions.province}
+                    value={selectedFilters.province}
+                    onChange={(values) => handleMultiSelectChange("province", values)}
+                    loading={loadingOptions}
+                  />
+
+                  <FilterGroup
+                    label="Party"
+                    placeholder="Select parties"
+                    options={availableOptions.party}
+                    value={selectedFilters.party}
+                    onChange={(values) => handleMultiSelectChange("party", values)}
+                    loading={loadingOptions}
+                  />
+
+                  <FilterGroup
+                    label="Categories"
+                    placeholder="Select categories"
+                    options={availableOptions.categories}
+                    value={selectedFilters.categories}
+                    onChange={(values) => handleMultiSelectChange("categories", values)}
+                    loading={loadingOptions}
+                  />
+
+                  <FilterGroup
+                    label="Committee"
+                    placeholder="Select committees"
+                    options={availableOptions.committee}
+                    value={selectedFilters.committee}
+                    onChange={(values) => handleMultiSelectChange("committee", values)}
+                    loading={loadingOptions}
+                  />
+
+                  <FilterGroup
+                    label="Role"
+                    placeholder="Select roles"
+                    options={availableOptions.role}
+                    value={selectedFilters.role}
+                    onChange={(values) => handleMultiSelectChange("role", values)}
+                    loading={loadingOptions}
+                  />
+
+                  <FilterGroup
+                    label="Issue"
+                    placeholder="Select issues"
+                    options={availableOptions.issue}
+                    value={selectedFilters.issue}
+                    onChange={(values) => handleMultiSelectChange("issue", values)}
+                    loading={loadingOptions}
+                  />
+
+                  {selectedFilters.topline === "senate" && (
+                    <FilterGroup
+                      label="LinkedIn"
+                      placeholder="Select LinkedIn statuses"
+                      options={availableOptions.linkedin}
+                      value={selectedFilters.linkedin}
+                      onChange={(values) => handleMultiSelectChange("linkedin", values)}
+                      loading={loadingOptions}
+                    />
                   )}
-
-                  {/* Office Types */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">Office Type</label>
-                    <div className="relative">
-                      <select
-                        className="w-full h-12 border border-gray-300 rounded-md px-4 pr-10 appearance-none bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 text-sm"
-                        value={selectedFilters.officeType}
-                        onChange={(e) => handleFilterChange("officeType", e.target.value)}
-                      >
-                        <option value="">All office types</option>
-                        {availableOfficeTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  {/* Party */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">Political Party</label>
-                    <div className="relative">
-                      <select
-                        className="w-full h-12 border border-gray-300 rounded-md px-4 pr-10 appearance-none bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        value={selectedFilters.party}
-                        onChange={(e) => handleFilterChange("party", e.target.value)}
-                        disabled={selectedFilters.topline === "civil-service"}
-                      >
-                        <option value="">All parties</option>
-                        <option value="liberal">Liberal Party of Canada</option>
-                        <option value="conservative">Conservative Party of Canada</option>
-                        <option value="ndp">New Democratic Party</option>
-                        <option value="bloc">Bloc Québécois</option>
-                        <option value="green">Green Party of Canada</option>
-                        <option value="independent">Independent</option>
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  {/* Committee and Leadership Staff */}
-                  {availableCommittees.length > 0 && (
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">Committee</label>
-                      <div className="relative">
-                        <select
-                          className="w-full h-12 border border-gray-300 rounded-md px-4 pr-10 appearance-none bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 text-sm"
-                          value={selectedFilters.committee}
-                          onChange={(e) => handleFilterChange("committee", e.target.value)}
-                        >
-                          <option value="">All committees</option>
-                          {availableCommittees.map((committee) => (
-                            <option key={committee} value={committee}>
-                              {committee}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Roles Covered */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">Role</label>
-                    <div className="relative">
-                      <select
-                        className="w-full h-12 border border-gray-300 rounded-md px-4 pr-10 appearance-none bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 text-sm"
-                        value={selectedFilters.role}
-                        onChange={(e) => handleFilterChange("role", e.target.value)}
-                      >
-                        <option value="">All roles</option>
-                        <option value="cabinet-minister">Cabinet Minister</option>
-                        <option value="parliamentary-secretary">Parliamentary Secretary</option>
-                        <option value="committee-chair">Committee Chair</option>
-                        <option value="committee-vice-chair">Committee Vice-Chair</option>
-                        <option value="caucus-chair">Caucus Chair</option>
-                        <option value="house-leader">House Leader</option>
-                        <option value="whip">Whip</option>
-                        <option value="critic">Opposition Critic</option>
-                        <option value="chief-of-staff">Chief of Staff</option>
-                        <option value="policy-advisor">Policy Advisor</option>
-                        <option value="communications-director">Communications Director</option>
-                        <option value="constituency-assistant">Constituency Assistant</option>
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -531,28 +557,46 @@ export default function ContactListsPage() {
                   <table className="w-full border-collapse bg-white">
                     <thead>
                       <tr className="border-b border-gray-200 bg-gray-50">
-                        <th className="text-left p-4 font-semibold text-gray-900">Name</th>
-                        <th className="text-left p-4 font-semibold text-gray-900">Title</th>
-                        <th className="text-left p-4 font-semibold text-gray-900">Party</th>
-                        <th className="text-left p-4 font-semibold text-gray-900">Province</th>
-                        <th className="text-left p-4 font-semibold text-gray-900">Contact</th>
+                        {organizeColumns(contacts).map((column) => (
+                          <th key={column.key} className="text-left p-2 font-semibold text-gray-900 text-xs">
+                            {column.label}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {contacts.map((contact) => (
-                        <tr key={contact.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="p-4 font-medium text-gray-900">{contact.name}</td>
-                          <td className="p-4 text-gray-700">{contact.title}</td>
-                          <td className="p-4">
-                            <Badge variant="secondary" className="text-xs">
-                              {contact.party}
-                            </Badge>
-                          </td>
-                          <td className="p-4 text-gray-700">{contact.province}</td>
-                          <td className="p-4 text-sm text-gray-600">
-                            <div>{contact.email}</div>
-                            <div>{contact.phone}</div>
-                          </td>
+                      {contacts.map((contact, index) => (
+                        <tr key={contact.id || index} className="border-b border-gray-100 hover:bg-gray-50">
+                          {organizeColumns(contacts).map((column) => {
+                            const value = getColumnValue(contact, column.key)
+                            const formattedValue = formatColumnValue(value)
+                            
+                            return (
+                              <td key={column.key} className="p-2 text-xs text-gray-700 max-w-32">
+                                {column.key === 'email' && value ? (
+                                  <a href={`mailto:${value}`} className="text-blue-600 hover:text-blue-800 truncate block">
+                                    {formattedValue}
+                                  </a>
+                                ) : column.key === 'profile_url' && value ? (
+                                  <a href={value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                    View
+                                  </a>
+                                ) : column.key === 'website_url' && value ? (
+                                  <a href={value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                    Link
+                                  </a>
+                                ) : column.key === 'political_party' || column.key === 'party' ? (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {formattedValue}
+                                  </Badge>
+                                ) : (
+                                  <div className="truncate" title={value}>
+                                    {formattedValue}
+                                  </div>
+                                )}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                     </tbody>

@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
         await updateOrderStatus(orderId, "completed", paymentIntent.id)
 
         try {
+          // Use Blob Storage URL for permanent download link
           const downloadUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/orders/${orderId}/download`
 
           await sendPurchaseConfirmation({
