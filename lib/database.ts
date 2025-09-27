@@ -21,7 +21,7 @@ export function getDatabase() {
   if (pool) return pool
 
   // Force Azure database connection with the user's credentials
-  const databaseUrl = 'postgresql://maxwell_reader:b@SNTbN!^esWs(0@newsletterpostgres.postgres.database.azure.com:5432/postgres'
+  const databaseUrl = `postgresql://${process.env.POSTGRES_USER}:${process.env.POSTGRES_PASSWORD}@${process.env.POSTGRES_HOST}:5432/${process.env.POSTGRES_DATABASE}`
 
   console.log('🔌 Forcing Azure database connection')
 
